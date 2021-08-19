@@ -12,7 +12,7 @@ import { Account } from './account.entity';
 import { Email } from '../shared/email';
 import { AccountPasswordDto } from './dto/account_password.dto';
 import { Request } from 'express';
-import { Misc } from '../shared/misc';
+import { computeVerifier } from '../shared/srp6';
 
 @EntityRepository(AccountPassword)
 export class AccountPasswordRepository extends Repository<AccountPassword> {
@@ -78,9 +78,11 @@ export class AccountPasswordRepository extends Repository<AccountPassword> {
       where: { id: accountPassword.id },
     });
 
-    account.v = '0';
-    account.s = '0';
-    account.sha_pass_hash = await Misc.hashPassword(account.username, password);
+    account.verifier = await computeVerifier(
+      account.username,
+      password,
+      randomBytes(32),
+    );
     await account.save();
 
     accountPassword.password_changed_at = new Date(Date.now() - 1000);

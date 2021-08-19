@@ -69,9 +69,9 @@ export class AuthGuard implements CanActivate {
       ]);
     }
 
-    delete accountExists.sha_pass_hash;
-    delete accountExists.v;
-    delete accountExists.s;
+    delete accountExists.verifier;
+    delete accountExists.salt;
+    delete accountExists.reg_mail;
 
     const accountPassword = await AccountPassword.findOne({
       where: { id: this.decoded.id },

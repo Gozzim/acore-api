@@ -17,6 +17,8 @@ import { Response } from 'express';
 import { AccountBanned } from './account_banned.entity';
 import { AccountInformation } from './account_information.entity';
 import { Misc } from '../shared/misc';
+import { randomBytes } from 'crypto';
+import { computeVerifier } from '../shared/srp6';
 
 @EntityRepository(Account)
 export class AccountRepository extends Repository<Account> {
@@ -47,8 +49,11 @@ export class AccountRepository extends Repository<Account> {
       throw new BadRequestException(['Password does not match']);
     }
 
+    const salt = randomBytes(32);
+    const verifier = await computeVerifier(username, password, salt);
     account.username = username.toUpperCase();
-    account.sha_pass_hash = await Misc.hashPassword(username, password);
+    account.verifier = verifier;
+    account.salt = salt;
     account.reg_mail = email.toUpperCase();
 
     try {
@@ -79,7 +84,9 @@ export class AccountRepository extends Repository<Account> {
 
     if (
       !account ||
-      (await Misc.hashPassword(username, password)) !== account.sha_pass_hash
+      !account.verifier.equals(
+        await computeVerifier(username, password, account.salt),
+      )
     ) {
       throw new UnauthorizedException(['Incorrect username or password']);
     }
@@ -96,8 +103,9 @@ export class AccountRepository extends Repository<Account> {
     const account = await this.findOne({ where: { id: accountId } });
 
     if (
-      (await Misc.hashPassword(account.username, passwordCurrent)) !==
-      account.sha_pass_hash
+      !account.verifier.equals(
+        await computeVerifier(account.username, passwordCurrent, account.salt),
+      )
     ) {
       throw new UnauthorizedException(['Your current password is wrong!']);
     }
@@ -106,9 +114,11 @@ export class AccountRepository extends Repository<Account> {
       throw new BadRequestException(['Password does not match']);
     }
 
-    account.v = '0';
-    account.s = '0';
-    account.sha_pass_hash = await Misc.hashPassword(account.username, password);
+    account.verifier = await computeVerifier(
+      account.username,
+      password,
+      randomBytes(32),
+    );
     await account.save();
 
     const accountPassword = new AccountPassword();
@@ -136,8 +146,9 @@ export class AccountRepository extends Repository<Account> {
     }
 
     if (
-      (await Misc.hashPassword(account.username, password)) !==
-      account.sha_pass_hash
+      !account.verifier.equals(
+        await computeVerifier(account.username, password, account.salt),
+      )
     ) {
       throw new UnauthorizedException(['Your current password is wrong!']);
     }
@@ -177,9 +188,9 @@ export class AccountRepository extends Repository<Account> {
       expiresIn: process.env.JWT_EXPIRES_IN,
     });
 
-    delete account.sha_pass_hash;
-    delete account.v;
-    delete account.s;
+    delete account.verifier;
+    delete account.salt;
+    delete account.reg_mail;
 
     response.status(statusCode).json({ status: 'success', token, account });
   }
